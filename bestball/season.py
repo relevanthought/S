@@ -46,6 +46,42 @@ def _weeks_with_data(season: int) -> list[int]:
     return [w for w in all_weeks if w in available]
 
 
+@dataclass
+class SweepResult:
+    season: int
+    num_teams: int
+    league_results: list[LeagueResult]
+
+
+def simulate_many(
+    season: int,
+    num_teams: int = 12,
+    num_sims: int = 100,
+    base_seed: int = 0,
+    advance_count: int = 4,
+    payout_spec: payouts.PayoutSpec | None = None,
+) -> SweepResult:
+    """Run `num_sims` independently-seeded league simulations against the
+    same real season (same player pool, different random drafts) so you can
+    see how much of a "champion" is draft-randomness noise vs. a repeatable
+    edge -- e.g. whether a particular draft slot (pick position) wins more
+    than its fair share.
+    """
+    pool = players.build_player_pool(season)
+    league_results = [
+        simulate_league(
+            season=season,
+            num_teams=num_teams,
+            seed=base_seed + i,
+            advance_count=advance_count,
+            payout_spec=payout_spec,
+            player_pool=pool,
+        )
+        for i in range(num_sims)
+    ]
+    return SweepResult(season=season, num_teams=num_teams, league_results=league_results)
+
+
 def simulate_league(
     season: int,
     num_teams: int = 12,

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import statistics
+from collections import Counter
 
 from . import data, payouts, season
 
@@ -31,6 +33,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--refresh-data", action="store_true", help="force re-download of the nflverse stats cache"
     )
+    parser.add_argument(
+        "--sweep",
+        type=int,
+        default=None,
+        metavar="N",
+        help="run N independently-seeded simulations and report champion consistency instead of a single result",
+    )
+    parser.add_argument(
+        "--sweep-base-seed", type=int, default=0, help="first seed used in a --sweep run (default 0)"
+    )
     return parser
 
 
@@ -54,6 +66,64 @@ def _print_standings(result: season.LeagueResult) -> None:
         )
 
 
+def _run_sweep(args: argparse.Namespace, sim_season: int, payout_spec: payouts.PayoutSpec) -> None:
+    sweep = season.simulate_many(
+        season=sim_season,
+        num_teams=args.teams,
+        num_sims=args.sweep,
+        base_seed=args.sweep_base_seed,
+        advance_count=args.advance,
+        payout_spec=payout_spec,
+    )
+
+    champion_slot_counts: Counter[int] = Counter()
+    champion_totals = []
+    runnerup_gaps = []
+    field_totals = []
+
+    for lr in sweep.league_results:
+        champ = lr.results[0]
+        champ_total = champ.regular_season_total + champ.playoff_total
+        champion_slot_counts[champ.team.team_id] += 1
+        champion_totals.append(champ_total)
+        if len(lr.results) > 1:
+            runner_up = lr.results[1]
+            runner_up_total = runner_up.regular_season_total + runner_up.playoff_total
+            runnerup_gaps.append(champ_total - runner_up_total)
+        for r in lr.results:
+            field_totals.append(r.regular_season_total + r.playoff_total)
+
+    n = len(sweep.league_results)
+    fair_rate = 100.0 / args.teams
+
+    print(f"\n=== Seed sweep: {n} simulations, season {sim_season}, {args.teams} teams ===")
+    print(
+        f"Champion total points: mean={statistics.mean(champion_totals):.1f} "
+        f"stdev={statistics.pstdev(champion_totals):.1f} "
+        f"min={min(champion_totals):.1f} max={max(champion_totals):.1f}"
+    )
+    if runnerup_gaps:
+        print(
+            f"Margin over runner-up: mean={statistics.mean(runnerup_gaps):.1f} "
+            f"stdev={statistics.pstdev(runnerup_gaps):.1f}"
+        )
+    print(
+        f"Whole-field total points: mean={statistics.mean(field_totals):.1f} "
+        f"stdev={statistics.pstdev(field_totals):.1f}"
+    )
+
+    print(f"\nChampion by draft slot (fair share would be {fair_rate:.1f}% each):")
+    header = f"{'Slot':>4} {'Wins':>5} {'Win %':>7}"
+    print(header)
+    print("-" * len(header))
+    for slot in range(args.teams):
+        wins = champion_slot_counts.get(slot, 0)
+        print(f"{slot + 1:>4} {wins:>5} {100.0 * wins / n:>6.1f}%")
+
+    unique_champs = len(champion_slot_counts)
+    print(f"\n{unique_champs}/{args.teams} distinct draft slots won at least once across {n} sims.")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -62,8 +132,12 @@ def main(argv: list[str] | None = None) -> int:
         data.fetch_player_stats_csv(force_refresh=True)
 
     sim_season = args.season or data.latest_complete_season()
-
     payout_spec = payouts.PayoutSpec(entry_fee=args.entry_fee, rake=args.rake)
+
+    if args.sweep:
+        _run_sweep(args, sim_season, payout_spec)
+        return 0
+
     result = season.simulate_league(
         season=sim_season,
         num_teams=args.teams,
