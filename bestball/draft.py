@@ -1,7 +1,7 @@
 """Snake-draft simulation with AI opponents.
 
 Mirrors DraftKings Best Ball Mania-style roster construction: 8 starting
-slots (QB, 2x RB, 3x WR, TE, 1x FLEX) plus a 10-man bench for 18 total
+slots (QB, 2x RB, 3x WR, TE, 1x FLEX) plus a 12-man bench for 20 total
 rounds, no kicker or defense. Exact DK roster-construction position limits
 aren't published in a scrapeable feed, so ``POSITION_MIN``/``POSITION_MAX``/
 ``POSITION_SOFT_TARGET`` below are a reasonable, documented approximation
@@ -21,12 +21,12 @@ from dataclasses import dataclass, field
 from .players import Player
 
 STARTER_SLOTS = {"QB": 1, "RB": 2, "WR": 3, "TE": 1, "FLEX": 1}
-BENCH_SIZE = 10
-ROSTER_SIZE = sum(STARTER_SLOTS.values()) + BENCH_SIZE  # 18
+BENCH_SIZE = 12
+ROSTER_SIZE = sum(STARTER_SLOTS.values()) + BENCH_SIZE  # 20
 
 POSITION_MIN = {"QB": 1, "RB": 3, "WR": 4, "TE": 1}
-POSITION_MAX = {"QB": 4, "RB": 9, "WR": 10, "TE": 4}
-POSITION_SOFT_TARGET = {"QB": 2, "RB": 6, "WR": 7, "TE": 2}
+POSITION_MAX = {"QB": 4, "RB": 10, "WR": 11, "TE": 5}
+POSITION_SOFT_TARGET = {"QB": 2, "RB": 7, "WR": 8, "TE": 2}
 
 NEED_BONUS_WEIGHT = 12.0
 ADP_DECAY = 0.985  # controls how steeply perceived value falls off with ADP

@@ -72,7 +72,7 @@ exists, and is explicit about the pieces that don't have one:
   small deterministic tiebreak.
 - **Roster construction rules**: DK's exact Best Ball roster-construction
   limits aren't published in a way this environment can fetch, so
-  `bestball/draft.py` uses a documented, reasonable approximation (18
+  `bestball/draft.py` uses a documented, reasonable approximation (20
   rounds, 1 QB/2 RB/3 WR/1 TE/1 FLEX starters, no K/DST, position
   min/max/soft-target constants you can tune).
 - **Payouts**: DK's real per-contest payout tables are contest-specific and
