@@ -61,8 +61,9 @@ exists, and is explicit about the pieces that don't have one:
   1999. Scoring is computed with DraftKings' published classic rules
   (`bestball/scoring.py`): full PPR, 0.04/0.1 pt per pass/rush-rec yard, 4/6
   pt TDs, -1 INT/fumble lost, and the 100/300-yard bonuses.
-- **Real DK Best Ball ADP**: `data/dk_best_ball_adp_2025.csv` is a real DK
-  Best Ball ADP snapshot (442 players, including 2025 rookies), sourced from
+- **Real DK Best Ball ADP**: `data/dk_best_ball_adp_2026.csv` is a real DK
+  Best Ball ADP snapshot for the **upcoming 2026 season draft class** (442
+  players, including 2026 rookies), sourced from
   [occupyfantasy.com/draftkings-best-ball-adp](https://occupyfantasy.com/draftkings-best-ball-adp/).
   That site itself is blocked by this environment's network egress policy
   (confirmed via both a direct fetch and the fetch tool — an org-level
@@ -77,6 +78,19 @@ exists, and is explicit about the pieces that don't have one:
   replacement (a standard sabermetric-style technique) so positional
   scarcity behaves realistically. Both paths only use information that would
   genuinely have been known before the simulated season started.
+- **ADP vintage vs. scored season are independent, and that's a real gap**:
+  nflverse's live results feed only has real box scores through the **2024**
+  season as of this writing — no 2025 season data yet (nflverse hasn't
+  published it), and 2026 hasn't been played. So running this project's
+  default `--season` (2024, the most recent complete season actually
+  fetchable) against the 2026 ADP snapshot is a **"2026 market, 2024
+  results" backtest** — real draft signal, replayed against the most recent
+  real season available, not a literal simulation of the 2026 season itself.
+  2026 rookies in the ADP snapshot correctly have no matching box scores
+  yet and fall back to the proxy (which is nearly a no-op for them, since
+  they also have no prior-season data — they just draft late). If real 2025
+  weekly results become fetchable, or you have them from another source,
+  pointing `data.load_weekly_rows` at 2025 would close this gap.
 - **Roster construction rules**: DK's exact Best Ball roster-construction
   limits aren't published in a way this environment can fetch, so
   `bestball/draft.py` uses a documented, reasonable approximation (20
@@ -105,7 +119,7 @@ bestball/
   payouts.py   illustrative GPP payout curve
   cli.py       command-line entry point
 data/
-  dk_best_ball_adp_2025.csv   real DK Best Ball ADP snapshot (checked in; source site is network-blocked)
+  dk_best_ball_adp_2026.csv   real DK Best Ball ADP snapshot for 2026 (checked in; source site is network-blocked)
 tests/         unit tests (scoring math, lineup optimizer vs. brute force, draft roster rules, ADP matching)
 ```
 

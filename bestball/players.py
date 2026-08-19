@@ -4,15 +4,22 @@ ADP (Average Draft Position).
 DraftKings Best Ball drafts happen *before* the season, using ADP that
 reflects the market's pre-season expectations -- not the season's actual
 results. Where a real DK Best Ball ADP snapshot is available (see
-``live_adp.py`` -- currently a 2025-season snapshot sourced from
-occupyfantasy.com, since that site itself is blocked from live fetches in
-this environment) we use it directly, matched by normalized player name +
-position. For anyone not in that snapshot (older seasons, or players it
-doesn't cover), we fall back to a proxy: rank by *prior* season real DK
-fantasy points converted to points-above-replacement, plus a small
-deterministic tiebreak for rookies/unknowns with no prior-season data. Both
-paths only use information that would genuinely have been available before
-Week 1, so the draft never "sees the future."
+``live_adp.py`` -- currently a snapshot for the upcoming 2026 season
+sourced from occupyfantasy.com, since that site itself is blocked from live
+fetches in this environment) we use it directly, matched by normalized
+player name + position. For anyone not in that snapshot (players scored
+against an older season, or players the snapshot doesn't cover), we fall
+back to a proxy: rank by *prior* season real DK fantasy points converted to
+points-above-replacement, plus a small deterministic tiebreak for
+rookies/unknowns with no prior-season data. Both paths only use information
+that would genuinely have been available before Week 1, so the draft never
+"sees the future."
+
+Note the ADP snapshot's vintage (2026) and the `season` argument here
+(real box scores, currently available through 2024 -- nflverse hasn't
+published 2025 results yet and 2026 hasn't been played) are independent:
+using 2026 ADP with `season=2024` runs a "2026 market, 2024 results"
+backtest, not a literal replay of the 2026 season.
 """
 
 from __future__ import annotations
