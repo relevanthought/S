@@ -93,16 +93,26 @@ def simulate_league(
     payout_spec: payouts.PayoutSpec | None = None,
     player_pool: list[players.Player] | None = None,
     team_targets: dict[int, dict[str, int]] | None = None,
+    team_embargoes: dict[int, dict[str, int]] | None = None,
 ) -> LeagueResult:
     """Simulate one Best Ball league: draft `num_teams` rosters, score every
     week of the given `season` with real NFL results, cut to the top
     `advance_count` teams after the regular-season weeks, and rank the field
     by (regular season + playoff) points. `team_targets` optionally forces
-    specific teams to draft an exact position mix (see `Draft`), e.g. to
-    compare roster-construction strategies head to head in the same league.
+    specific teams to draft an exact position mix, and `team_embargoes` bars
+    specific teams from a position until a given round (e.g. "Zero RB" --
+    see `Draft`), to compare roster-construction strategies head to head in
+    the same league.
     """
     pool = player_pool if player_pool is not None else players.build_player_pool(season)
-    draft = Draft(pool, num_teams=num_teams, team_names=team_names, seed=seed, team_targets=team_targets)
+    draft = Draft(
+        pool,
+        num_teams=num_teams,
+        team_names=team_names,
+        seed=seed,
+        team_targets=team_targets,
+        team_embargoes=team_embargoes,
+    )
     teams = draft.run()
 
     weeks = _weeks_with_data(season)
@@ -164,12 +174,13 @@ def simulate_league(
 @dataclass
 class StrategyStats:
     name: str
-    target: dict[str, int]
+    spec: dict
     n: int
     mean_total: float
     stdev_total: float
     min_total: float
     max_total: float
+    p90_total: float  # 90th percentile -- "ceiling" outcome, the metric that matters in top-heavy GPPs
     mean_final_rank: float
     champion_rate: float  # fraction of appearances finishing rank 1
     advance_rate: float  # fraction of appearances that advanced to the playoff cut
@@ -178,31 +189,40 @@ class StrategyStats:
 @dataclass
 class StrategyComparisonResult:
     season: int
-    strategies: dict[str, dict[str, int]]
+    strategies: dict[str, dict]
     num_sims: int
     stats: dict[str, StrategyStats]
 
 
 def simulate_strategy_comparison(
     season: int,
-    strategies: dict[str, dict[str, int]],
+    strategies: dict[str, dict],
     num_sims: int = 150,
     teams_per_strategy: int = 6,
     base_seed: int = 0,
     advance_count: int = 4,
     payout_spec: payouts.PayoutSpec | None = None,
 ) -> StrategyComparisonResult:
-    """Compare roster-construction strategies (exact position-count targets,
-    e.g. {"QB": 3, "RB": 7, "WR": 7, "TE": 3}) head to head.
+    """Compare roster-construction strategies head to head.
+
+    Each strategy is a dict with either or both of:
+      "target": exact final position counts, e.g. {"QB": 3, "RB": 7, "WR": 7,
+                "TE": 3} -- must sum to `bestball.draft.ROSTER_SIZE`.
+      "embargo": position -> first round it's draftable, e.g. {"RB": 5} for
+                 "Zero RB" (no RB before round 5). This controls *when* a
+                 position is taken, which "target" alone can't express.
+    A strategy can use one, the other, or both; omitting a strategy entirely
+    falls back to the default min/max/soft-target heuristic apart from
+    whatever the embargo restricts.
 
     Each simulation builds one league with `teams_per_strategy` teams per
     strategy, all facing the same real season, and randomly reassigns which
     draft slot each strategy occupies every simulation (so results aren't
     confounded by any one strategy consistently picking earlier/later).
-    Every strategy's target dict must sum to `bestball.draft.ROSTER_SIZE`.
     """
-    for name, target in strategies.items():
-        if sum(target.values()) != ROSTER_SIZE:
+    for name, spec in strategies.items():
+        target = spec.get("target")
+        if target is not None and sum(target.values()) != ROSTER_SIZE:
             raise ValueError(
                 f"strategy {name!r} target must sum to {ROSTER_SIZE}, got {sum(target.values())}: {target}"
             )
@@ -221,12 +241,22 @@ def simulate_strategy_comparison(
         seed = base_seed + i
         labels = [name for name in names for _ in range(teams_per_strategy)]
         assign_rng.shuffle(labels)
-        team_targets = {team_id: strategies[label] for team_id, label in enumerate(labels)}
+        team_targets = {
+            team_id: strategies[label]["target"]
+            for team_id, label in enumerate(labels)
+            if strategies[label].get("target") is not None
+        }
+        team_embargoes = {
+            team_id: strategies[label]["embargo"]
+            for team_id, label in enumerate(labels)
+            if strategies[label].get("embargo") is not None
+        }
 
         result = simulate_league(
             season=season,
             num_teams=num_teams,
             seed=seed,
+            team_embargoes=team_embargoes,
             advance_count=advance_count,
             payout_spec=payout_spec,
             player_pool=pool,
@@ -243,15 +273,17 @@ def simulate_strategy_comparison(
 
     stats = {}
     for name in names:
-        vals = totals[name]
+        vals = sorted(totals[name])
+        p90_idx = min(len(vals) - 1, round(0.9 * (len(vals) - 1)))
         stats[name] = StrategyStats(
             name=name,
-            target=strategies[name],
+            spec=strategies[name],
             n=len(vals),
             mean_total=round(statistics.mean(vals), 1),
             stdev_total=round(statistics.pstdev(vals), 1),
             min_total=round(min(vals), 1),
             max_total=round(max(vals), 1),
+            p90_total=round(vals[p90_idx], 1),
             mean_final_rank=round(statistics.mean(ranks[name]), 2),
             champion_rate=round(100.0 * sum(champion_flags[name]) / len(champion_flags[name]), 1),
             advance_rate=round(100.0 * sum(advanced_flags[name]) / len(advanced_flags[name]), 1),

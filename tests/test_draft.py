@@ -78,6 +78,29 @@ class TestDraft(unittest.TestCase):
         with self.assertRaises(ValueError):
             Draft(pool, num_teams=2, team_targets={0: {"QB": 1, "RB": 1}})
 
+    def test_embargo_blocks_position_until_round(self):
+        pool = make_pool()
+        draft = Draft(pool, num_teams=4, seed=11, team_embargoes={0: {"RB": 5}})
+        draft.run()
+        rb_rounds = [pick.round for pick in draft.picks if pick.team_id == 0 and pick.player.position == "RB"]
+        self.assertTrue(all(r >= 5 for r in rb_rounds), rb_rounds)
+        # embargoed team still ends with a full, min/max-respecting roster
+        team = draft.teams[0]
+        self.assertEqual(len(team.roster), ROSTER_SIZE)
+        for pos, min_n in POSITION_MIN.items():
+            self.assertGreaterEqual(team.position_count(pos), min_n)
+
+    def test_embargo_combines_with_target(self):
+        pool = make_pool()
+        target = {"QB": 2, "RB": 6, "WR": 10, "TE": 2}
+        draft = Draft(pool, num_teams=2, seed=3, team_targets={0: target}, team_embargoes={0: {"RB": 5}})
+        draft.run()
+        team = draft.teams[0]
+        for pos, n in target.items():
+            self.assertEqual(team.position_count(pos), n)
+        rb_rounds = [pick.round for pick in draft.picks if pick.team_id == 0 and pick.player.position == "RB"]
+        self.assertTrue(all(r >= 5 for r in rb_rounds), rb_rounds)
+
 
 if __name__ == "__main__":
     unittest.main()

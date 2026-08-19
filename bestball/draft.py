@@ -59,6 +59,7 @@ class Draft:
         seed: int | None = None,
         noise_sigma: float = 0.25,
         team_targets: dict[int, dict[str, int]] | None = None,
+        team_embargoes: dict[int, dict[str, int]] | None = None,
     ):
         if num_teams < 2:
             raise ValueError("num_teams must be >= 2")
@@ -86,6 +87,16 @@ class Draft:
                     f"got {sum(target.values())}: {target}"
                 )
 
+        # Optional per-team draft-order embargo, e.g. {0: {"RB": 5}} bars
+        # team 0 from drafting any RB before round 5 -- this is the actual
+        # mechanism behind strategies like "Zero RB" (avoid the position
+        # early, then take opportunistic value once it's cheaper), which a
+        # final-count target alone can't express: two teams can finish with
+        # the same RB count while one drafted them all in rounds 1-3 and the
+        # other waited until round 6+. Combines with team_targets or the
+        # default heuristic -- it only ever narrows the eligible set further.
+        self.team_embargoes = team_embargoes or {}
+
     def run(self) -> list[Team]:
         pick_no = 0
         for rnd in range(1, ROSTER_SIZE + 1):
@@ -103,18 +114,33 @@ class Draft:
         target = self.team_targets.get(team.team_id)
         if target is not None:
             eligible = {pos for pos, count in target.items() if team.position_count(pos) < count}
-            return eligible or set(target.keys())  # safety net; shouldn't trigger if target sums to ROSTER_SIZE
+            eligible = eligible or set(target.keys())  # safety net; shouldn't trigger if target sums to ROSTER_SIZE
+        else:
+            remaining_picks = ROSTER_SIZE - len(team.roster)
+            deficits = {
+                pos: max(0, POSITION_MIN[pos] - team.position_count(pos)) for pos in POSITION_MIN
+            }
+            required = sum(deficits.values())
+            if required >= remaining_picks:
+                forced = {pos for pos, d in deficits.items() if d > 0}
+                if forced:
+                    eligible = forced
+                else:
+                    eligible = {pos for pos in POSITION_MAX if team.position_count(pos) < POSITION_MAX[pos]}
+            else:
+                eligible = {pos for pos in POSITION_MAX if team.position_count(pos) < POSITION_MAX[pos]}
 
-        remaining_picks = ROSTER_SIZE - len(team.roster)
-        deficits = {
-            pos: max(0, POSITION_MIN[pos] - team.position_count(pos)) for pos in POSITION_MIN
-        }
-        required = sum(deficits.values())
-        if required >= remaining_picks:
-            forced = {pos for pos, d in deficits.items() if d > 0}
-            if forced:
-                return forced
-        return {pos for pos in POSITION_MAX if team.position_count(pos) < POSITION_MAX[pos]}
+        embargo = self.team_embargoes.get(team.team_id)
+        if embargo:
+            current_round = len(team.roster) + 1
+            embargoed_out = {pos for pos, pos_eligible in embargo.items() if current_round < pos_eligible}
+            narrowed = eligible - embargoed_out
+            # If the embargo would leave nothing draftable this pick (e.g. a
+            # forced deficit-fill collides with an embargoed position),
+            # honor the deficit fill rather than stalling the draft.
+            eligible = narrowed or eligible
+
+        return eligible
 
     def _select_pick(self, team: Team) -> Player:
         eligible = self._eligible_positions(team)
