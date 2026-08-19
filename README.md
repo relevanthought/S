@@ -61,15 +61,22 @@ exists, and is explicit about the pieces that don't have one:
   1999. Scoring is computed with DraftKings' published classic rules
   (`bestball/scoring.py`): full PPR, 0.04/0.1 pt per pass/rush-rec yard, 4/6
   pt TDs, -1 INT/fumble lost, and the 100/300-yard bonuses.
-- **ADP proxy, not live ADP**: there's no publicly reachable live fantasy
-  ADP feed from this environment, so `bestball/players.py` derives a
-  stand-in from real prior-season performance, converted to points-above-
+- **Real DK Best Ball ADP**: `data/dk_best_ball_adp_2025.csv` is a real DK
+  Best Ball ADP snapshot (442 players, including 2025 rookies), sourced from
+  [occupyfantasy.com/draftkings-best-ball-adp](https://occupyfantasy.com/draftkings-best-ball-adp/).
+  That site itself is blocked by this environment's network egress policy
+  (confirmed via both a direct fetch and the fetch tool — an org-level
+  allowlist decision, not something code can route around), so the snapshot
+  was captured externally and checked in rather than scraped live at
+  runtime. `bestball/live_adp.py` loads it and matches players by
+  normalized name + position (not team, since a player's snapshot-time team
+  can differ from whatever season's box scores we're scoring against). For
+  any player not in the snapshot — a real gap, since it's a single point-in-
+  time capture, not a live-refreshing feed — `bestball/players.py` falls
+  back to a proxy: prior-season real DK points converted to points-above-
   replacement (a standard sabermetric-style technique) so positional
-  scarcity behaves realistically (RBs/WRs go earlier than raw point totals
-  would suggest, mirroring real ADP). This uses only information that would
-  genuinely have been known before the simulated season started — it never
-  looks at the season being simulated. Rookies/unknowns fall back to a
-  small deterministic tiebreak.
+  scarcity behaves realistically. Both paths only use information that would
+  genuinely have been known before the simulated season started.
 - **Roster construction rules**: DK's exact Best Ball roster-construction
   limits aren't published in a way this environment can fetch, so
   `bestball/draft.py` uses a documented, reasonable approximation (20
@@ -90,13 +97,16 @@ exists, and is explicit about the pieces that don't have one:
 bestball/
   data.py      nflverse fetch/cache + raw stat loading
   scoring.py   DraftKings classic fantasy scoring formula
-  players.py   season player pool + ADP proxy (points above replacement)
+  live_adp.py  loads the real DK Best Ball ADP snapshot, name/position matching
+  players.py   season player pool: live ADP + points-above-replacement fallback
   draft.py     snake draft simulation with AI opponents
   lineup.py    exact optimal weekly Best Ball lineup solver
-  season.py    orchestrates draft + weekly scoring + standings/payouts
+  season.py    orchestrates draft + weekly scoring + standings/payouts + seed sweeps
   payouts.py   illustrative GPP payout curve
   cli.py       command-line entry point
-tests/         unit tests (scoring math, lineup optimizer vs. brute force, draft roster rules)
+data/
+  dk_best_ball_adp_2025.csv   real DK Best Ball ADP snapshot (checked in; source site is network-blocked)
+tests/         unit tests (scoring math, lineup optimizer vs. brute force, draft roster rules, ADP matching)
 ```
 
 ## Tests

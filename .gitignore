@@ -2,5 +2,6 @@ __pycache__/
 *.pyc
 data/*.csv
 data/*.parquet
+!data/dk_best_ball_adp_2025.csv
 .venv/
 *.egg-info/
