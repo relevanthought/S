@@ -55,6 +55,29 @@ class TestDraft(unittest.TestCase):
             ids_b = [p.player_id for p in tb.roster]
             self.assertEqual(ids_a, ids_b)
 
+    def test_team_targets_force_exact_position_mix(self):
+        pool = make_pool()
+        target_a = {"QB": 3, "RB": 7, "WR": 7, "TE": 3}
+        target_b = {"QB": 2, "RB": 6, "WR": 10, "TE": 2}
+        draft = Draft(pool, num_teams=4, seed=7, team_targets={0: target_a, 1: target_b})
+        teams = draft.run()
+        for pos, n in target_a.items():
+            self.assertEqual(teams[0].position_count(pos), n)
+        for pos, n in target_b.items():
+            self.assertEqual(teams[1].position_count(pos), n)
+        # Teams without an override still use the default heuristic and end
+        # up with a full, min/max-respecting roster.
+        for team in teams[2:]:
+            self.assertEqual(len(team.roster), ROSTER_SIZE)
+            for pos, min_n in POSITION_MIN.items():
+                self.assertGreaterEqual(team.position_count(pos), min_n)
+                self.assertLessEqual(team.position_count(pos), POSITION_MAX[pos])
+
+    def test_team_targets_must_sum_to_roster_size(self):
+        pool = make_pool()
+        with self.assertRaises(ValueError):
+            Draft(pool, num_teams=2, team_targets={0: {"QB": 1, "RB": 1}})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,6 +58,7 @@ class Draft:
         team_names: list[str] | None = None,
         seed: int | None = None,
         noise_sigma: float = 0.25,
+        team_targets: dict[int, dict[str, int]] | None = None,
     ):
         if num_teams < 2:
             raise ValueError("num_teams must be >= 2")
@@ -70,6 +71,20 @@ class Draft:
         self.teams = [Team(i, names[i]) for i in range(num_teams)]
         self.available: dict[str, Player] = {p.player_id: p for p in player_pool}
         self.picks: list[DraftPick] = []
+
+        # Optional per-team exact roster-construction override, e.g.
+        # {0: {"QB": 3, "RB": 7, "WR": 7, "TE": 3}} to force team 0 to draft
+        # exactly that position mix instead of following the default
+        # min/max/soft-target heuristic. Each target dict must sum to
+        # ROSTER_SIZE. Teams not present in team_targets use the default
+        # heuristic.
+        self.team_targets = team_targets or {}
+        for team_id, target in self.team_targets.items():
+            if sum(target.values()) != ROSTER_SIZE:
+                raise ValueError(
+                    f"roster target for team {team_id} must sum to {ROSTER_SIZE}, "
+                    f"got {sum(target.values())}: {target}"
+                )
 
     def run(self) -> list[Team]:
         pick_no = 0
@@ -85,6 +100,11 @@ class Draft:
         return self.teams
 
     def _eligible_positions(self, team: Team) -> set[str]:
+        target = self.team_targets.get(team.team_id)
+        if target is not None:
+            eligible = {pos for pos, count in target.items() if team.position_count(pos) < count}
+            return eligible or set(target.keys())  # safety net; shouldn't trigger if target sums to ROSTER_SIZE
+
         remaining_picks = ROSTER_SIZE - len(team.roster)
         deficits = {
             pos: max(0, POSITION_MIN[pos] - team.position_count(pos)) for pos in POSITION_MIN
@@ -102,13 +122,15 @@ class Draft:
         if not candidates:
             candidates = list(self.available.values())
 
+        soft_targets = self.team_targets.get(team.team_id, POSITION_SOFT_TARGET)
+
         best_player = None
         best_score = float("-inf")
         for p in candidates:
             base_value = 1000.0 * (ADP_DECAY**p.adp)
             noise = self.rng.lognormvariate(0.0, self.noise_sigma)
             perceived = base_value * noise
-            soft = POSITION_SOFT_TARGET.get(p.position, 0)
+            soft = soft_targets.get(p.position, 0)
             count = team.position_count(p.position)
             need_bonus = max(0, soft - count) * NEED_BONUS_WEIGHT
             score = perceived + need_bonus
