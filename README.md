@@ -1,4 +1,13 @@
-# DraftKings-style NFL Best Ball Contest Simulation
+# DraftKings Fantasy Sports Tools
+
+Two independent tools live in this repo:
+
+- **`bestball/`** — a simulation of a DraftKings Best Ball Mania-style NFL
+  contest (draft, real historical scoring, standings/payouts).
+- **`mlb_dfs/`** — an exact lineup optimizer for DraftKings Classic MLB
+  daily fantasy contests.
+
+## NFL Best Ball Contest Simulation
 
 Simulates a DraftKings Best Ball Mania-style NFL fantasy contest end to end:
 
@@ -105,7 +114,7 @@ exists, and is explicit about the pieces that don't have one:
   *shape* of DK's multi-week Best Ball tournaments without claiming to
   reproduce their exact (much larger, multi-round) bracket mechanics.
 
-## Project layout
+## NFL project layout
 
 ```
 bestball/
@@ -120,7 +129,96 @@ bestball/
   cli.py       command-line entry point
 data/
   dk_best_ball_adp_2026.csv   real DK Best Ball ADP snapshot for 2026 (checked in; source site is network-blocked)
-tests/         unit tests (scoring math, lineup optimizer vs. brute force, draft roster rules, ADP matching)
+```
+
+---
+
+## DraftKings Classic MLB DFS Lineup Optimizer
+
+Given a player pool (salary, position eligibility, team/opponent, and a
+projection), `mlb_dfs` finds the **provably highest-projection valid
+lineup** for DraftKings' Classic MLB contest format, using an exact integer
+program (via [PuLP](https://coin-or.github.io/pulp/)/CBC) rather than a
+greedy heuristic:
+
+- 10 roster slots: `P P C 1B 2B 3B SS OF OF OF`, multi-position players
+  (e.g. `1B/OF`) handled correctly.
+- $50,000 salary cap.
+- DK's own construction rules: no more than 5 hitters from one real MLB
+  team, and players drawn from at least 2 different games on the slate.
+- Optional player locks/exclusions, and generating N diverse lineups at
+  once (bounded overlap between them) for multi-entry GPPs.
+
+### Live data — why you have to supply the slate
+
+This environment's network egress policy blocks `draftkings.com` outright,
+and every third-party sports/DFS data site tried while building this
+(`rotogrinders.com`, `rotowire.com`, `fantasypros.com`, `mlb.com`,
+`espn.com`, `statsapi.mlb.com`, even `en.wikipedia.org`) — the same
+organization-level allowlist decision documented in the NFL section above
+for `occupyfantasy.com`. Unlike the Best Ball ADP case, there's no
+single static snapshot to check in here: the MLB slate, salaries, and
+starting lineups are different **every single day**, so there is nothing
+that could be captured once and reused.
+
+This isn't actually a gap specific to this environment, though: DraftKings
+has no public API for its live salary pool, so real MLB DFS optimizer
+tools all work the same way — you export today's slate yourself from the
+DK site (**Lineup Builder → Export to CSV** on the contest you want to
+optimize) and hand that file to the tool. `mlb_dfs/slate.py` parses that
+exact export format.
+
+### Quick start
+
+```bash
+pip install -r requirements.txt
+python -m mlb_dfs.cli --salaries DKSalaries.csv
+```
+
+Optional: override DK's own `AvgPointsPerGame` projection with your own,
+via a `name,projection` CSV:
+
+```bash
+python -m mlb_dfs.cli --salaries DKSalaries.csv --projections my_projections.csv
+```
+
+Generate 3 diverse lineups for multi-entry, or lock/exclude specific
+players (DK player IDs, from the salary CSV's `ID` column):
+
+```bash
+python -m mlb_dfs.cli --salaries DKSalaries.csv --lineups 3 --max-overlap 7
+python -m mlb_dfs.cli --salaries DKSalaries.csv --lock 12345678 --exclude 87654321
+```
+
+There's also a bundled **synthetic** demo slate (fictional players/teams,
+not a real date) for trying the tool without a real export:
+
+```bash
+python -m mlb_dfs.cli --sample
+```
+
+### Library usage
+
+```python
+from mlb_dfs import load_dk_export, optimize
+
+players = load_dk_export("DKSalaries.csv")
+lineup = optimize(players)
+for label, p in lineup.slots:
+    print(label, p.name, p.team, p.salary, p.projection)
+print(lineup.total_salary, lineup.total_projection)
+```
+
+### MLB project layout
+
+```
+mlb_dfs/
+  player.py     Player dataclass + multi-position eligibility parsing
+  slate.py      loads DK's Classic MLB CSV export format; sample-slate loader
+  optimizer.py  exact ILP lineup solver (salary cap, team-hitter cap, min-games rule)
+  cli.py        command-line entry point
+data/
+  sample_dk_mlb_slate.csv   synthetic demo slate for --sample / tests (not real data)
 ```
 
 ## Tests

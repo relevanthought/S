@@ -3,5 +3,6 @@ __pycache__/
 data/*.csv
 data/*.parquet
 !data/dk_best_ball_adp_2026.csv
+!data/sample_dk_mlb_slate.csv
 .venv/
 *.egg-info/
